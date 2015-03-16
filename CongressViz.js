@@ -4,28 +4,45 @@ function drawUI(nodes, links){
 	console.log('Length of nodes:', nodes.length);
 	console.log('Length of links:', links.length);
 
-	var width = 400,
-    height = 300,
+	var width = 800,
+    height = 800,
     root;
 
-var force = d3.layout.force()
-    .size([width, height]);
 
 var svg = d3.select("body").append("svg")
     .attr("width", width)
     .attr("height", height);
 
-var link = svg.selectAll(".link").data(links).enter().append("line").attr("class", "link").style("stroke-width", function(d) { return d.weight; });
-var node = svg.selectAll(".node").data(nodes).enter().append("circle").attr("class", "node").attr("r", function(d) {return Math.sqrt(d.bet);}).style("fill", function(d) { return color(d.group); }).call(force.drag);
-
 	
 var force = d3.layout.force()
-    .charge(-120)
-    .linkDistance(30)
+    .charge(-250)
+    .linkDistance(function(d){return 120/d.value})
+	.gravity(0.75)
     .size([width, height]);	
 
+var color = function(party){
+	if(party === "R") { return 'red'}
+	else { return 'blue'};
+}
+	
+var link = svg.selectAll(".link")
+	.data(links)
+	.enter()
+	.append("line")
+	.attr("class", "link")
+	.style("stroke-width", function(d) { return d.value; });
 
-function update(nodes, links) {
+var node = svg.selectAll(".node")
+	.data(nodes)
+	.enter()
+	.append("circle")
+	.attr("r", function(d) {return d.eig*20 | 3;})
+	.style("fill", function(d) { return color(d.group); })
+	.attr("class", "node")
+	.call(force.drag);
+	
+
+
 
   // Restart the force layout.
   force
@@ -46,7 +63,7 @@ function update(nodes, links) {
         .attr("cy", function(d) { return d.y; });
 	});
 };
-};
+
 
 
 
@@ -65,6 +82,14 @@ d3.json('JSONnodes.json', function(error, nodesdata){
 		console.log('I got more data');
 		console.log(nodesdata.names[0]);
 		var nodes = [];
+        nodes.push({
+                name: nodesdata.names[0],
+                group: nodesdata.group[0],
+                eig: nodesdata.eig[0],
+                bet: nodesdata.bet[0],
+                res: nodesdata.res[0]
+            });
+           
 		for(var i = 0; i < nodesdata.names.length; i++){
 			var person = {
 				name: nodesdata.names[i],
