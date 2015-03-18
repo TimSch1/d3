@@ -4,8 +4,8 @@ function drawUI(nodes, links){
 	console.log('Length of nodes:', nodes.length);
 	console.log('Length of links:', links.length);
 
-	var width = 800,
-    height = 800,
+	var width = 1000,
+    height = 650,
     root;
 
 
@@ -15,10 +15,13 @@ var svg = d3.select("body").append("svg")
 
 	
 var force = d3.layout.force()
-    .charge(-250)
-    .linkDistance(function(d){return 120/d.value})
-	.gravity(0.75)
-    .size([width, height]);	
+    .charge(-300)
+	.linkDistance(function(d){return 200/d.value | 50;})
+	.gravity(0.7)
+    .size([width, height])
+	.nodes(nodes)
+	.links(links)
+	.start();	
 
 var color = function(party){
 	if(party === "R") { return 'red'}
@@ -40,20 +43,9 @@ var node = svg.selectAll(".node")
 	.style("fill", function(d) { return color(d.group); })
 	.attr("class", "node")
 	.call(force.drag);
+
 	
-
-
-
-  // Restart the force layout.
-  force
-      .nodes(nodes)
-      .links(links)
-      .start();
-
-   node.append("title")
-      .text(function(d) { return d.name; });
-
-  force.on("tick", function() {
+  force.on("tick", function(){
     link.attr("x1", function(d) { return d.source.x; })
         .attr("y1", function(d) { return d.source.y; })
         .attr("x2", function(d) { return d.target.x; })
@@ -61,6 +53,9 @@ var node = svg.selectAll(".node")
 
     node.attr("cx", function(d) { return d.x; })
         .attr("cy", function(d) { return d.y; });
+		
+	node.append("title")
+      .text(function(d) { return d.name; });
 	});
 };
 
@@ -83,11 +78,11 @@ d3.json('JSONnodes.json', function(error, nodesdata){
 		console.log(nodesdata.names[0]);
 		var nodes = [];
         nodes.push({
-                name: nodesdata.names[0],
-                group: nodesdata.group[0],
-                eig: nodesdata.eig[0],
-                bet: nodesdata.bet[0],
-                res: nodesdata.res[0]
+                name: "",
+                group: "",
+                eig: 0,
+                bet: 0,
+                res: 0
             });
            
 		for(var i = 0; i < nodesdata.names.length; i++){
