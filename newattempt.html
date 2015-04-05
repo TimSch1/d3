@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+
+.node {
+    stroke: #000;
+    stroke-width: 1.5px;
+	cursor: pointer;
+}
+
+.link {
+  stroke: #d3d3d3;
+}
+
+</style>
+<script type = "text/javascript" src="d3.min.js"></script>
+</head>
+<body>
+<script type = "text/javascript">
+
+//Constants for the svg container
+var width = 800,
+    height = 800;
+
+//Set up the colour scale
+var color = function(party){
+	if (party === "R"){return "red"}
+	else{return "blue"}
+	};
+
+
+//Set up the force layout with nothing in it yet
+var force = d3.layout.force()																		//d3 magic, calculates coordinates
+	.gravity(0.65)																					//keeps nodes within the height/weight constraints
+	.linkDistance(function(d){return 240/(d.value);})												//distance between nodes is a function of how connected they are
+	.charge(function(d){return (1/d.bet)*-300;}) 													//repulsion is an inverse function of betweenness. 
+	.linkStrength(0.1) 																				//allows linkDistance to be more flexible
+    .size([width, height]);																			//same size as svg container
+
+//Put svg container in the DOM
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+//Read the data from the json file and place visualizations within the callback function
+var graph;
+
+d3.json("nodesandlinks.json", function(error, data){
+	if (error) return console.log(error);
+	graph = data;
+	
+//Define linear radius and opacity scales to visualize node importance, they are a function of eigenvector centrality
+var rscale = d3.scale.linear()
+	.domain([0, d3.max(graph.nodes, function(d){return d.eig;})])  									//domain is always defined by the data
+	.range([5,15]);																					//range is the output you want
+						
+var oscale = d3.scale.linear()
+	.domain([0, d3.max(graph.nodes, function(d){return d.eig;})])
+	.range([0.2,1]);
+						
+//feed the force layout the nodes and links to calculate coordinates, start begins the simulation after all parameters have been set
+force.nodes(graph.nodes)
+    .links(graph.links)
+    .start();
+
+//Create all the line svgs and bind it to data but without locations yet
+var link = svg.selectAll(".link")																	//select css selector
+    .data(graph.links)																				//bind the data
+    .enter().append("line")																			//enter placeholders for data and append line svgs
+    .attr("class", "link");																			//assign css class link to all svgs
+
+//Do the same with the circles for the nodes, nodes should be created second to appear on top of links
+var node = svg.selectAll(".node")
+    .data(graph.nodes)
+    .enter().append("g")																			//assign grouping "g" for nodes
+	.attr("class", "node");
+	
+	
+node.append("circle")
+    .attr("r", function (d){ return rscale(d.eig); })												//radius is a function of eigenvector centrality scaled by rscale
+    .style("fill", function (d) {return color(d.group);})											//color is a function of party affiliation
+	.style("opacity", function(d) {return oscale(d.eig);});											//opacity also indicates centrality
+	
+
+	
+//for each "tick" until the layout "cools" the x and y coordinates of the svg lines, circles, and text are calculated and updated
+force.on("tick", function () {
+	link.attr("x1", function (d) {return d.source.x;})
+        .attr("y1", function (d) {return d.source.y;})
+        .attr("x2", function (d) {return d.target.x;})
+        .attr("y2", function (d) {return d.target.y;});
+    
+	d3.selectAll("circle")
+		.attr("cx", function (d) {return d.x;})
+        .attr("cy", function (d) {return d.y;})
+		.append("title")
+		.text(function(d){return d.name;});
+
+	d3.selectAll("text")																			//also calculates text positions but we haven't bound text yet
+		.attr("x", function (d) {return 10 + d.x;})
+        .attr("y", function (d) {return d.y;});
+		
+	node.each(collide(0.99));																		//collision detection prevents node overlap which would obscure information
+	node.on('dblclick', connectedNodes); 															//allows us to select subsets of the graph for analysis with our mouse
+});
+
+var padding = 1, 																					//desired separation between circles
+    radius = 15; 																					//largest radius returned by rscale
+
+function collide(alpha) {																			//collision detection function
+  var quadtree = d3.geom.quadtree(graph.nodes);														//quadtree defines 4 "child" square partitions
+  return function(d) {
+    var rb = radius + padding,																		//max radius plus padding for no node overlap
+        nx1 = d.x - rb,																				//define 4 partitions
+        nx2 = d.x + rb,
+        ny1 = d.y - rb,
+        ny2 = d.y + rb;
+    quadtree.visit(function(quad, x1, y1, x2, y2) {													//quadtree.visit detects overlaps in the partitions
+      if (quad.point && (quad.point !== d)) {
+        var x = d.x - quad.point.x,
+            y = d.y - quad.point.y,
+            l = Math.sqrt(x * x + y * y);															//distance calculation
+          if (l < rb) {																				//if distance between two nodes is less than minimum distance	
+          l = (l - rb) / l * alpha;																	//move the point by l where l is scaled by parameter alpha
+          d.x -= x *= l;
+          d.y -= y *= l;
+          quad.point.x += x;
+          quad.point.y += y;
+        }
+      }
+      return x1 > nx2 || x2 < nx1 || y1 > ny2 || y2 < ny1;
+    });
+  };
+}
+//create variable that tracks the state of mouse click
+var toggle = 0;
+
+//iterate through the arrays and determine all direct node links
+var linkedByIndex = {};
+for (i = 0; i < graph.nodes.length; i++) {
+    linkedByIndex[i + "," + i] = 1;};
+	
+	graph.links.forEach(function (d) {
+    linkedByIndex[d.source.index + "," + d.target.index] = 1;});
+
+function neighboring(a, b) {
+    return linkedByIndex[a.index + "," + b.index];}
+	
+function connectedNodes() {
+    if (toggle == 0) {
+        //Reduce the opacity of all but the neighboring nodes
+        d = d3.select(this).node().__data__;
+        node.style("opacity", function (o) {
+            return neighboring(d, o) | neighboring(o, d) ? 1 : 0;});
+			
+		//add text to only neighboring nodes on click
+		node.append("text", function(o) {
+			return neighboring(d, o) | neighboring(o, d) ? 1: 0;})
+			.attr("x", function (d) {return 10 + d.x;})
+			.attr("y", function (d) {return d.y;})
+			.text(function(d) { return d.name })
+			.style("font-family", "courier")
+			.style("font-size", "8px")
+			.attr("id", "nodenames");
+        
+		//reduce link opacity of all but neighboring links
+		link.style("opacity", function (o) {
+            return d.index==o.source.index | d.index==o.target.index ? 1 : 0;});
+        
+        toggle = 1;
+    } else {
+        //return to original opacities and remove names text
+		link.style("opacity", 1);
+		node.style("opacity", 1);
+		d3.selectAll("#nodenames").remove();
+        toggle = 0;
+    }
+}
+});
+</script>
+</body>
+</html>
